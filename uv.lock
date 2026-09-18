@@ -588,16 +588,16 @@ requires-dist = [
 
 [[package]]
 name = "miniml-jax"
-version = "0.10.0"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jax" },
     { name = "numpy" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/09/d3/ca293b5746c5b44a31b0b460d9291cfab9219aea8a80a903b90374953605/miniml_jax-0.10.0.tar.gz", hash = "sha256:e577de95f90f2a6e760671062eef64193303f67523aee2c151777f1c5db9c693", size = 31148, upload-time = "2026-08-15T17:35:34.535Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/cf/704af5d1b0470fab8c2da8da7b95cf2acdfd26ccda24b339c607b7601382/miniml_jax-0.11.0.tar.gz", hash = "sha256:0e38322d0291a0ef14591bec86450e26c6b23ab31b18203763756c117ad2ac44", size = 38633, upload-time = "2026-09-13T14:44:41.86Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/7a/c3eef6644b53962b79b78d0c1913d97eaece3c00f2ec423c32870ec16859/miniml_jax-0.10.0-py3-none-any.whl", hash = "sha256:d1dc9f930cd3fe996a65106ffcc3aa633ec427d2f871e2abdd2d74ec02d86ae8", size = 42214, upload-time = "2026-08-15T17:35:33.324Z" },
+    { url = "https://files.pythonhosted.org/packages/be/2d/12a8998618237dba7b0a0b7fcd3a8239b4a4a03264f5ff765dc0a6de36d1/miniml_jax-0.11.0-py3-none-any.whl", hash = "sha256:26920ef4719aa443a5fe3f38c52508809ef020590017f5f7bf0d70e539440727", size = 50864, upload-time = "2026-09-13T14:44:39.954Z" },
 ]
 
 [[package]]
