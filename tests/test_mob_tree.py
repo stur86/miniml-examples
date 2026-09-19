@@ -91,12 +91,13 @@ def test_hard_leaves_follow_the_preferred_branch(depth: int) -> None:
     tree = _tree(depth)
     X = _inputs()
     split_weights = np.array(tree._split_weights())
+    split_biases = np.array(tree._split_biases())
 
     expected = []
     for x in np.array(X):
         node = 0
         for _ in range(depth):
-            node = 2 * node + 1 + int(split_weights[node] @ x > 0)
+            node = 2 * node + 1 + int(split_weights[node] @ x + split_biases[node] > 0)
         expected.append(node - (tree.num_leaves - 1))
 
     assert np.array_equal(np.array(tree._hard_leaves(X)), np.array(expected))
@@ -115,6 +116,28 @@ def test_predict_tree_returns_the_reached_leaf(depth: int) -> None:
     logits = np.array(tree._leaf_weights())
     expected = logits[leaves] - np.log(np.exp(logits[leaves]).sum(axis=1, keepdims=True))
     assert np.allclose(leaf_log_p, expected, atol=1e-5)
+
+
+@pytest.mark.parametrize("depth", DEPTHS)
+def test_biases_shift_the_splits(depth: int) -> None:
+    """A large enough bias must send every sample the same way."""
+    tree = _tree(depth)
+    X = _inputs()
+
+    params = tree.get_params()
+    assert params["_split_biases.v"].shape == (2**depth - 1,)
+
+    before = np.array(tree.layer_probs(X, 1))
+    params["_split_biases.v"] = jnp.full((2**depth - 1,), 1e3)
+    tree.set_params(params)
+    after = np.array(tree.layer_probs(X, 1))
+
+    assert not np.allclose(before, after)
+    # Everyone now takes the right branch out of the root
+    assert np.allclose(after[:, 1], 1.0, atol=1e-5)
+    assert np.array_equal(
+        np.array(tree._hard_leaves(X)), np.full(len(X), 2**depth - 1)
+    )
 
 
 def test_entropy_loss_only_in_training_mode() -> None:

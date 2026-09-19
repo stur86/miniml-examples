@@ -3,11 +3,12 @@
 The model is a full binary tree of fixed depth, trained end to end by gradient
 descent.
 
-* Each internal node holds a weight vector $w_n$.  For an input $x$ it sends the
-  sample to its right child with probability $\\sigma(w_n \\cdot x)$ and to its
-  left child with probability $1-\\sigma(w_n \\cdot x)$, where $\\sigma$ is the
-  logistic function.  The split is therefore soft: every sample reaches every
-  leaf with some probability.
+* Each internal node holds a weight vector $w_n$ and a bias $b_n$.  For an
+  input $x$ it sends the sample to its right child with probability
+  $\\sigma(w_n \\cdot x + b_n)$ and to its left child with probability
+  $1-\\sigma(w_n \\cdot x + b_n)$, where $\\sigma$ is the logistic function.  The
+  split is therefore soft: every sample reaches every leaf with some
+  probability.
 * Each leaf holds a fixed set of class logits, which do not depend on the input.
   A leaf is thus a *bigot*: an expert with one opinion that it gives no matter
   what it is asked.  The tree is a mixture of experts in which the gating
@@ -17,7 +18,7 @@ The probability that a sample reaches leaf $l$ is the product of the branch
 probabilities along the root-to-leaf path:
 
 $$
-p(l|x) = \\prod_{n \\in \\mathrm{path}(l)} \\sigma(s_{n,l}\\, w_n \\cdot x)
+p(l|x) = \\prod_{n \\in \\mathrm{path}(l)} \\sigma\\left[s_{n,l}\\,(w_n \\cdot x + b_n)\\right]
 $$
 
 with $s_{n,l}=+1$ if the path turns right at node $n$ and $-1$ if it turns left.
@@ -175,21 +176,21 @@ def sigmoid_entropy_schedule(
 class MoBBinaryTree(MiniMLModel):
     """A Mixture of Bigots binary decision tree classifier.
 
-    The model has two parameters:
+    The model has three parameters:
 
     * ``_split_weights``, of shape ``(2**depth - 1, n_in)``: one weight vector
       per internal node.  It carries an L1 regularization loss, which pushes
       the splits to use few input features each, as a hard decision tree does.
+    * ``_split_biases``, of shape ``(2**depth - 1,)``: the offset of each split.
+      It is not regularized: where a split sits says nothing about how simple
+      it is, and pulling the offsets to zero would only force the splits back
+      through the origin.
     * ``_leaf_weights``, of shape ``(2**depth, n_out)``: the class logits of
       each leaf.  It carries a weaker L2 regularization loss, which keeps the
       leaf distributions from saturating early in the fit.
 
-    Both are visible under those names in ``get_params()`` and ``set_params()``,
-    as ``"_split_weights.v"`` and ``"_leaf_weights.v"``.
-
-    Note that the splits have no bias term, so every split hyperplane passes
-    through the origin.  Center the inputs, or append a constant feature, if
-    that matters for the data at hand.
+    All three are visible under those names in ``get_params()`` and
+    ``set_params()``, as ``"_split_weights.v"`` and so on.
 
     Layers are numbered by the number of splits above them: layer 1 holds the
     two children of the root and layer ``depth`` holds the leaves.  The
@@ -243,6 +244,7 @@ class MoBBinaryTree(MiniMLModel):
             reg_loss=LNormRegularization(1),
             reg_scale=split_reg_scale,
         )
+        self._split_biases = MiniMLParam(shape=(self._num_leaves - 1,))
         self._leaf_weights = MiniMLParam(
             shape=(self._num_leaves, n_out),
             reg_loss=LNormRegularization(2),
@@ -390,13 +392,14 @@ class MoBBinaryTree(MiniMLModel):
             raise MiniMLError("Model parameters have not been bound to buffers")
 
         split_weights = self._split_weights()
+        split_biases = self._split_biases()
 
         # Walk one level at a time, from the root, following the heap numbering
         nodes = jnp.zeros(len(X), dtype=jnp.int32)
         for _ in range(self._depth):
-            # The weights of the one node each sample is at
+            # The split of the one node each sample is at
             node_weights = split_weights[nodes]
-            goes_right = jnp.sum(node_weights * X, axis=-1) > 0
+            goes_right = jnp.sum(node_weights * X, axis=-1) + split_biases[nodes] > 0
             nodes = 2 * nodes + 1 + goes_right
 
         # The walk ends one level below the last internal layer, whose nodes
@@ -444,7 +447,7 @@ class MoBBinaryTree(MiniMLModel):
         Returns:
             JXArray: Logits, of shape ``(n_nodes, n_samples)``.
         """
-        return self._split_weights(buffer) @ X.T
+        return self._split_weights(buffer) @ X.T + self._split_biases(buffer)[:, None]
 
     def _layer_log_probs(
         self, split_logits: JXArray, down_to: int | None = None

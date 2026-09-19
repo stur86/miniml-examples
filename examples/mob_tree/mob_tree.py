@@ -114,7 +114,7 @@ def _(X_test, X_train, mobt, np, sigmoid_entropy_schedule, y_test, y_train):
     _report("soft")
 
     # One fit per stage, each starting from the fit of the stage before
-    _schedule = sigmoid_entropy_schedule(mobt.depth, scale=8.0)
+    _schedule = sigmoid_entropy_schedule(mobt.depth, scale=32.0)
     for _stage, _weights in enumerate(_schedule):
         mobt.set_entropy_weights(_weights)
         mobt.fit(X_train, y_train)
