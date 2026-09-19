@@ -1,0 +1,22 @@
+# Byte-compiled / cached Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test and type-checker caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+
+# marimo session caches
+__marimo__/
