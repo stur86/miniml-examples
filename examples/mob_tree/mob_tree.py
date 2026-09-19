@@ -6,14 +6,21 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    import jax.numpy as jnp
     import marimo as mo
     import numpy as np
+    from miniml_examples.dataset import sklearn_classification_data
     from miniml_examples.mob_tree import MoBBinaryTree
     from sklearn import datasets
     from sklearn.model_selection import train_test_split
 
-    return MoBBinaryTree, datasets, jnp, mo, np, train_test_split
+    return (
+        MoBBinaryTree,
+        datasets,
+        mo,
+        np,
+        sklearn_classification_data,
+        train_test_split,
+    )
 
 
 @app.cell
@@ -33,13 +40,8 @@ def _(mo):
 
 
 @app.cell
-def _(datasets, jnp, np, train_test_split):
-    iris = datasets.load_iris()
-
-    X = jnp.array(iris.data)
-    # One-hot encoding of the targets
-    y = jnp.zeros((len(X), 3))
-    y = y.at[np.arange(len(X)), iris.target].set(1)
+def _(datasets, sklearn_classification_data, train_test_split):
+    X, y = sklearn_classification_data(datasets.load_iris())
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
