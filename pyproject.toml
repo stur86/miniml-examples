@@ -23,3 +23,8 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 erlenmeyer = { git = "https://github.com/stur86/erlenmeyer.git", branch = "master" }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

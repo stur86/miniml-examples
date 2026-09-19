@@ -122,5 +122,32 @@ def _(X_test, X_train, mobt, np, sigmoid_entropy_schedule, y_test, y_train):
     return
 
 
+@app.cell
+def _(mo):
+    mo.md(
+        r"""
+        ## Inference as a proper tree
+
+        Once the tree is hard, there is no need to mix the leaves: the sample
+        can follow the one branch each node prefers, which reads `depth` nodes
+        instead of all of them. The two predictions agree as long as the
+        squeezing worked.
+        """
+    )
+    return
+
+
+@app.cell
+def _(X_test, mobt, np, y_test):
+    _soft = np.argmax(mobt.predict(X_test), axis=1)
+    _hard = np.argmax(mobt.predict_tree(X_test), axis=1)
+    _true = np.argmax(y_test, axis=1)
+
+    print(f"Accuracy, mixture of every leaf: {np.mean(_soft == _true):.2%}")
+    print(f"Accuracy, single path:           {np.mean(_hard == _true):.2%}")
+    print(f"The two agree on:                {np.mean(_soft == _hard):.2%}")
+    return
+
+
 if __name__ == "__main__":
     app.run()

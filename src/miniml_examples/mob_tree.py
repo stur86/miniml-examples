@@ -28,12 +28,13 @@ $$
 p(c|x) = \\sum_l p(l|x)\\, p(c|l)
 $$
 
-Everything is computed in log space, so the two products above become sums over
-path nodes and a `logsumexp` over leaves.  The two sums are expressed as matrix
-products with the constant masks built by :func:`leaf_path_masks`, which lets
-the whole tree be evaluated in a few dense operations with no Python recursion.
-The same masks, built for a shallower tree, give the distribution over the nodes
-of any intermediate layer.
+Everything is computed in log space, so the product above becomes a sum over
+path nodes, and the mixture a `logsumexp` over leaves.  Rather than sum over
+each path in turn, the model walks down the tree one layer at a time: the
+log-probabilities of a layer are those of the layer above, each split in two by
+the log-probability of the branch taken.  One pass therefore yields the
+distribution over every layer, and costs work proportional to the number of
+nodes rather than to the number of paths.
 
 The model outputs log-probabilities and is trained with
 :class:`miniml.loss.CrossEntropyLogLoss`.  It also supports an optional
@@ -60,6 +61,11 @@ __all__ = ["leaf_path_masks", "sigmoid_entropy_schedule", "MoBBinaryTree"]
 
 def leaf_path_masks(depth: int) -> tuple[np.ndarray, np.ndarray]:
     """Build the constant masks that map node quantities onto leaves.
+
+    The masks state the layout of the tree in closed form, one row per leaf.
+    :class:`MoBBinaryTree` does not use them, since they take ``4**depth``
+    memory where its layer by layer walk takes none, but they are the reference
+    the walk is tested against.
 
     Internal nodes are numbered in level order, as in a heap: the root is 0 and
     the children of node $n$ are $2n+1$ (left) and $2n+2$ (right).  Leaves are
@@ -229,9 +235,6 @@ class MoBBinaryTree(MiniMLModel):
         self._n_out = n_out
         self._num_leaves = 2**depth
 
-        # One pair of masks per layer; layer l is at index l-1
-        layer_masks = [leaf_path_masks(layer) for layer in range(1, depth + 1)]
-
         # No entropy loss until the weights are set
         self._entropy_weights = np.zeros(depth)
 
@@ -247,14 +250,6 @@ class MoBBinaryTree(MiniMLModel):
         )
 
         super().__init__(loss=CrossEntropyLogLoss())
-
-        self._layer_masks = [
-            (
-                jnp.array(right_mask, dtype=self._dtype),
-                jnp.array(path_mask, dtype=self._dtype),
-            )
-            for right_mask, path_mask in layer_masks
-        ]
 
     @property
     def depth(self) -> int:
@@ -371,7 +366,73 @@ class MoBBinaryTree(MiniMLModel):
 
         split_logits = self._split_logits(X, self._buffer)
 
-        return jnp.exp(self._layer_log_probs(split_logits, layer)).T
+        return jnp.exp(self._layer_log_probs(split_logits, layer)[-1]).T
+
+    def _hard_leaves(self, X: JXArray) -> JXArray:
+        """Find the single leaf each sample reaches when the splits are hard.
+
+        Each node sends the sample to the child it gives the larger probability
+        to, namely right if its logit is positive and left otherwise.  Only the
+        ``depth`` nodes of the path are evaluated, one per level, rather than
+        all ``2**depth - 1`` of them.
+
+        Args:
+            X (JXArray): Input data, of shape ``(n_samples, n_in)``.
+
+        Returns:
+            JXArray: Leaf indices, of shape ``(n_samples,)``, numbered left to
+            right as in :func:`leaf_path_masks`.
+
+        Raises:
+            MiniMLError: If the model is not bound to a parameter buffer.
+        """
+        if not self.bound:
+            raise MiniMLError("Model parameters have not been bound to buffers")
+
+        split_weights = self._split_weights()
+
+        # Walk one level at a time, from the root, following the heap numbering
+        nodes = jnp.zeros(len(X), dtype=jnp.int32)
+        for _ in range(self._depth):
+            # The weights of the one node each sample is at
+            node_weights = split_weights[nodes]
+            goes_right = jnp.sum(node_weights * X, axis=-1) > 0
+            nodes = 2 * nodes + 1 + goes_right
+
+        # The walk ends one level below the last internal layer, whose nodes
+        # are numbered from 2**depth - 1 onwards
+        return nodes - (self._num_leaves - 1)
+
+    def predict_tree(self, X: JXArray) -> JXArray:
+        """Predict the class log-probabilities, treating the tree as a hard one.
+
+        Where ``predict()`` mixes every leaf, weighted by how likely the sample
+        is to reach it, this method follows the single most likely branch at
+        each node and returns the distribution of the one leaf it ends at.  It
+        therefore evaluates ``depth`` nodes per sample instead of all of them,
+        which is logarithmic rather than linear in the number of leaves.
+
+        The two agree only to the extent that the tree is hard, so train with
+        the entropy activity loss of :meth:`set_entropy_weights` before relying
+        on this.  A sample that a split is undecided about, and which the soft
+        prediction spreads over both sides, is sent one way here on the strength
+        of a small difference.  Note also that the greedy path is the most
+        likely branch at every step, but not necessarily the most likely leaf
+        overall, which only a search of all of them would find.
+
+        Args:
+            X (JXArray): Input data, of shape ``(n_samples, n_in)``.
+
+        Returns:
+            JXArray: Class log-probabilities, of shape ``(n_samples, n_out)``.
+
+        Raises:
+            MiniMLError: If the model is not bound to a parameter buffer.
+        """
+        leaves = self._hard_leaves(X)
+        class_log_p = jax.nn.log_softmax(self._leaf_weights(), axis=-1)
+
+        return class_log_p[leaves]
 
     def _split_logits(self, X: JXArray, buffer: JXArray) -> JXArray:
         """Compute the logit of the right branch at each node, per sample.
@@ -385,51 +446,66 @@ class MoBBinaryTree(MiniMLModel):
         """
         return self._split_weights(buffer) @ X.T
 
-    def _layer_log_probs(self, split_logits: JXArray, layer: int) -> JXArray:
-        """Compute the log-probability that each sample reaches each node of a
-        layer.
+    def _layer_log_probs(
+        self, split_logits: JXArray, down_to: int | None = None
+    ) -> list[JXArray]:
+        """Walk down the tree, computing the log-probability that each sample
+        reaches each node of every layer.
+
+        Each layer is the one above it split in two: the sample keeps the
+        log-probability of having reached a node, plus that of the branch it
+        then takes.  Each level of the walk costs as much as that level has
+        nodes, so the whole walk costs as much as the tree has nodes.
 
         Args:
             split_logits (JXArray): Node logits, as returned by
                 :meth:`_split_logits`.
-            layer (int): The layer to compute the distribution of, from 1 (the
-                children of the root) to ``depth`` (the leaves).
+            down_to (int, optional): The layer to stop at, from 1 (the children
+                of the root) to ``depth``. Defaults to the leaves.
 
         Returns:
-            JXArray: Log-probabilities, of shape ``(2**layer, n_samples)``.
-            Each column sums (in probability) to one.
+            list[JXArray]: One array per layer walked, the layer ``l`` one of
+            shape ``(2**l, n_samples)`` at index ``l-1``.  Each column of each
+            of them sums (in probability) to one.
         """
-        right_mask, path_mask = self._layer_masks[layer - 1]
+        if down_to is None:
+            down_to = self._depth
 
-        # Only the nodes above this layer play a part, and the heap numbering
-        # puts them first
-        logits = split_logits[: 2**layer - 1]
+        # The root holds every sample with certainty
+        log_p = jnp.zeros((1, split_logits.shape[1]), dtype=split_logits.dtype)
 
-        # log(sigmoid(z)) = z - softplus(z) for a right turn, and
-        # log(sigmoid(-z)) = -softplus(z) for a left one.  Summing over the
-        # nodes of each path gives both cases at once: add z on right turns
-        # only, subtract softplus(z) on every node of the path.
-        return right_mask @ logits - path_mask @ jax.nn.softplus(logits)
+        layers = []
+        for level in range(down_to):
+            # The heap numbering puts the nodes of a level next to each other
+            logits = split_logits[2**level - 1 : 2 ** (level + 1) - 1]
 
-    def _entropy_loss(self, split_logits: JXArray) -> JXArray | None:
+            # Take the left or the right branch out of each of those nodes
+            log_p = jnp.stack(
+                [log_p + jax.nn.log_sigmoid(-logits), log_p + jax.nn.log_sigmoid(logits)],
+                axis=1,
+            ).reshape(2 ** (level + 1), -1)
+            layers.append(log_p)
+
+        return layers
+
+    def _entropy_loss(self, layer_log_p: list[JXArray]) -> JXArray | None:
         """Compute the weighted sum of the layer entropies.
 
         Layers whose weight is zero are skipped, so a model with no weights set
         costs nothing.
 
         Args:
-            split_logits (JXArray): Node logits, as returned by
-                :meth:`_split_logits`.
+            layer_log_p (list[JXArray]): The log-probabilities of every layer,
+                as returned by :meth:`_layer_log_probs`.
 
         Returns:
             JXArray | None: The activity loss, or None if every weight is zero.
         """
         loss: JXArray | None = None
 
-        for layer, weight in enumerate(self._entropy_weights, start=1):
+        for log_p, weight in zip(layer_log_p, self._entropy_weights):
             if weight == 0:
                 continue
-            log_p = self._layer_log_probs(split_logits, layer)
             # Entropy in nats, summed over samples
             entropy = -jnp.sum(jnp.exp(log_p) * log_p)
             term = weight * entropy
@@ -462,8 +538,11 @@ class MoBBinaryTree(MiniMLModel):
         """
         split_logits = self._split_logits(X, buffer)
 
+        # One walk serves both the prediction and the activity loss
+        layer_log_p = self._layer_log_probs(split_logits)
+
         # (n_leaves, n_samples)
-        leaf_log_p = self._layer_log_probs(split_logits, self._depth)
+        leaf_log_p = layer_log_p[-1]
         # (n_leaves, n_out)
         class_log_p = jax.nn.log_softmax(self._leaf_weights(buffer), axis=-1)
 
@@ -473,9 +552,7 @@ class MoBBinaryTree(MiniMLModel):
         )
 
         activity_loss = (
-            self._entropy_loss(split_logits)
-            if mode == PredictMode.TRAINING
-            else None
+            self._entropy_loss(layer_log_p) if mode == PredictMode.TRAINING else None
         )
 
         return self._with_activity_loss(y_pred, activity_loss)
