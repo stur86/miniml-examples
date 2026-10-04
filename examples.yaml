@@ -7,10 +7,12 @@
 #
 # title, subtitle: shown at the top of the index
 # repo: GitHub URL, for the source links
+# back_link: text of the link back to the index on every example; omit for none
 
 title: MiniML examples
 subtitle: Interactive notebooks for MiniML, a small machine learning library built on JAX.
 repo: https://github.com/stur86/miniml-examples
+back_link: Back to home
 examples:
   - name: Mixture of Bigots tree
     path: examples/mob_tree/mob_tree.py

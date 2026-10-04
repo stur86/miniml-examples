@@ -55,6 +55,33 @@ CARD_TEMPLATE = """    <li class="card">
     </li>"""
 
 
+# Inserted into every exported notebook, just before </body>. The link is
+# fixed in a corner, so it shows wherever marimo's own layout scrolls.
+BACK_LINK_TEMPLATE = """<style>
+  .site-back {{ position: fixed; left: 1rem; bottom: 1rem; z-index: 1000; }}
+  .site-back a {{
+    display: inline-block; padding: 0.45rem 0.9rem; border-radius: 999px;
+    background: #151e28ee; border: 1px solid #263241; color: #4eb4da;
+    font: 600 0.9rem/1.2 system-ui, sans-serif; text-decoration: none;
+    box-shadow: 0 4px 14px #0006; backdrop-filter: blur(4px);
+  }}
+  .site-back a:hover {{ border-color: #4eb4da; color: #e6edf3; }}
+</style>
+<nav class="site-back"><a href="./">&larr; {text}</a></nav>
+"""
+
+
+def add_back_link(page: Path, text: str) -> None:
+    """Insert the link back to the index into an exported notebook."""
+    content = page.read_text()
+    if "</body>" not in content:
+        sys.exit(f"No </body> in {page}, cannot add the back link")
+    snippet = BACK_LINK_TEMPLATE.format(text=html.escape(text))
+    # The last </body>: the page may contain the string elsewhere, inside data
+    head, _, tail = content.rpartition("</body>")
+    page.write_text(head + snippet + "</body>" + tail)
+
+
 def load_config(path: Path) -> dict:
     """Read and check the examples configuration."""
     config = yaml.safe_load(path.read_text())
@@ -117,8 +144,12 @@ def main() -> None:
 
     config = load_config(args.config)
     args.out.mkdir(parents=True, exist_ok=True)
+    back_text = config.get("back_link")
     for ex in config["examples"]:
-        export(ROOT / ex["path"], args.out / f"{ex['slug']}.html")
+        page = args.out / f"{ex['slug']}.html"
+        export(ROOT / ex["path"], page)
+        if back_text:
+            add_back_link(page, back_text)
     write_index(config, args.out)
     # Serve the files as they are, without Jekyll processing
     (args.out / ".nojekyll").touch()
