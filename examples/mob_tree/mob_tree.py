@@ -6,6 +6,11 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
+    import logging
+
+    # JAX warns when it sees a GPU but has no CUDA support; the CPU is fine here
+    logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
+
     import marimo as mo
     import matplotlib.pyplot as plt
     import numpy as np
@@ -312,15 +317,11 @@ def _(CMAP, history, mo, np, plt):
 
 
 @app.cell
-def _(history, mo):
-    stage_slider = mo.ui.slider(
-        0, len(history) - 1, value=0, step=1, label="Stage", show_value=True
-    )
-    return (stage_slider,)
+def _(class_names, draw_tree, entropy, history, mo, np, plt, test_labels):
+    import base64 as _base64
+    import io as _io
+    import json as _json
 
-
-@app.cell
-def _(class_names, draw_tree, entropy, history, mo, np, plt, stage_slider, test_labels):
     # The test samples the soft fit is least sure about, namely with the highest
     # entropy over the leaves, among those the squeezed tree classifies correctly
     _soft_leaves = history[0]["layers"][-1]
@@ -330,19 +331,52 @@ def _(class_names, draw_tree, entropy, history, mo, np, plt, stage_slider, test_
     # Plus the least sure setosa, for comparison with an easy class
     _setosa = class_names.index("setosa")
     _picked.append(next(_i for _i in _order if _correct[_i] and test_labels[_i] == _setosa))
-    _n_samples = len(_picked)
 
-    _h = history[stage_slider.value]
-    _fig, _axes = plt.subplots(1, _n_samples, figsize=(4.2 * _n_samples, 3.6))
-    for _ax, _i in zip(_axes, _picked):
-        _layers = [np.ones(1)] + [_p[_i] for _p in _h["layers"]]
-        draw_tree(
-            _ax, _layers, leaf_labels=_h["leaf_classes"],
-            title=f"sample {_i} ({class_names[test_labels[_i]]}), "
-            f"H = {entropy(_h['layers'][-1][_i][None]):.2f}",
-        )
-    _fig.suptitle(_h["label"], fontsize=12)
-    _fig.tight_layout()
+    def _render(h):
+        """One stage of the schedule as a PNG data URL."""
+        _fig, _axes = plt.subplots(1, len(_picked), figsize=(4.2 * len(_picked), 3.6))
+        for _ax, _i in zip(_axes, _picked):
+            _layers = [np.ones(1)] + [_p[_i] for _p in h["layers"]]
+            draw_tree(
+                _ax, _layers, leaf_labels=h["leaf_classes"],
+                title=f"sample {_i} ({class_names[test_labels[_i]]}), "
+                f"H = {entropy(h['layers'][-1][_i][None]):.2f}",
+            )
+        _fig.suptitle(h["label"], fontsize=12)
+        _fig.tight_layout()
+        _buf = _io.BytesIO()
+        _fig.savefig(_buf, format="png", dpi=110)
+        plt.close(_fig)
+        return "data:image/png;base64," + _base64.b64encode(_buf.getvalue()).decode()
+
+    # Every stage is drawn up front, so the slider needs no kernel and keeps
+    # working in a static HTML export
+    _frames = [_render(_h) for _h in history]
+    _labels = [_h["label"] for _h in history]
+
+    _slider = f"""
+    <style>
+      body {{ margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: #222; }}
+      .row {{ display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }}
+      input[type=range] {{ flex: 0 1 320px; accent-color: #2f7bff; }}
+      img {{ width: 100%; height: auto; display: block; }}
+    </style>
+    <div class="row">
+      <label for="stage">Stage</label>
+      <input id="stage" type="range" min="0" max="{len(_frames) - 1}" value="0" step="1">
+      <span id="label">{_labels[0]}</span>
+    </div>
+    <img id="frame" src="{_frames[0]}" alt="Tree at the current stage">
+    <script>
+      const frames = {_json.dumps(_frames)};
+      const labels = {_json.dumps(_labels)};
+      const slider = document.getElementById("stage");
+      slider.addEventListener("input", () => {{
+        document.getElementById("frame").src = frames[slider.value];
+        document.getElementById("label").textContent = labels[slider.value];
+      }});
+    </script>
+    """
 
     mo.vstack([
         mo.md(
@@ -350,11 +384,11 @@ def _(class_names, draw_tree, entropy, history, mo, np, plt, stage_slider, test_
             "follows one test sample that the squeezed tree gets right. The first "
             "two are the ones the soft fit is least sure about, namely those with "
             "the highest entropy $H$ over the leaves; the third is the setosa "
-            "sample with the highest $H$. Node colour is the probability of reaching that node, and "
-            "the text next to each leaf is the class its bigot favours."
+            "sample with the highest $H$. Node colour is the probability of "
+            "reaching that node, and the text next to each leaf is the class its "
+            "bigot favours."
         ),
-        stage_slider,
-        _axes[0],
+        mo.iframe(_slider, height="400px"),
     ])
     return
 

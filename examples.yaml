@@ -1,0 +1,13 @@
+# Examples published to GitHub Pages, in the order they appear in the index.
+#
+# name: title shown in the index
+# path: marimo notebook, relative to the repository root
+# slug: name of the exported page, <slug>.html
+# description: optional, one line shown under the title
+
+title: MiniML examples
+examples:
+  - name: Mixture of Bigots tree
+    path: examples/mob_tree/mob_tree.py
+    slug: mob_tree
+    description: A soft decision tree trained by gradient descent, then squeezed into a hard one.
