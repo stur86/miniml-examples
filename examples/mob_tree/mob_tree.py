@@ -1,7 +1,11 @@
 import marimo
 
 __generated_with = "0.24.0"
-app = marimo.App(width="medium")
+app = marimo.App(
+    width="medium",
+    app_title="Mixture of Bigots tree",
+    css_file="../../theme/notebook.css",
+)
 
 
 @app.cell
@@ -90,12 +94,28 @@ def _(datasets, np, sklearn_classification_data, train_test_split):
 
 @app.cell
 def _(LinearSegmentedColormap, np, plt):
-    # Light figures with the palette of the blog post, whatever the marimo theme
-    plt.style.use("default")
-    plt.rcParams["figure.facecolor"] = "white"
-    CMAP = LinearSegmentedColormap.from_list("p", ["#ffffff", "#2f7bff", "#0a3fc2"])
-    EDGE = "#444444"
-    TEXT = "#222222"
+    # Dark figures on a transparent background, to sit on the dark page theme.
+    # Brighter means more probable.
+    plt.style.use("dark_background")
+    plt.rcParams.update({
+        "figure.facecolor": "none",
+        "axes.facecolor": "none",
+        "savefig.facecolor": "none",
+        "savefig.transparent": True,
+        "text.color": "#e6edf3",
+        "axes.labelcolor": "#e6edf3",
+        "axes.edgecolor": "#3a4757",
+        "xtick.color": "#9aa7b4",
+        "ytick.color": "#9aa7b4",
+        "axes.titlecolor": "#e6edf3",
+    })
+    CMAP = LinearSegmentedColormap.from_list("p", ["#16202b", "#1f5fd6", "#8fd0ff"])
+    EDGE = "#5b6b7d"
+    TEXT = "#e6edf3"
+
+    def ink(value):
+        """Text colour that reads well on CMAP(value)."""
+        return "#0e141b" if value > 0.7 else TEXT
 
     def draw_tree(ax, layers, leaf_labels=None, title=None):
         """Draw a horizontal tree, each node coloured by the probability of
@@ -119,7 +139,7 @@ def _(LinearSegmentedColormap, np, plt):
                     flow = layers[d + 1][child]
                     (x0, y0), (x1, y1) = pos[d, i], pos[d + 1, child]
                     ax.plot(
-                        [x0, x1], [y0, y1], color=CMAP(0.12 + 0.88 * flow),
+                        [x0, x1], [y0, y1], color=CMAP(0.2 + 0.8 * flow),
                         lw=0.6 + 6 * flow, solid_capstyle="round", zorder=1,
                     )
         for (d, i), (x, y) in pos.items():
@@ -131,7 +151,7 @@ def _(LinearSegmentedColormap, np, plt):
             )
             ax.text(
                 x, y, f"{p:.2f}", ha="center", va="center", fontsize=7,
-                color="white" if p > 0.45 else TEXT, zorder=3,
+                color=ink(p), zorder=3,
             )
             if leaf and leaf_labels is not None:
                 ax.text(x + 0.25, y, leaf_labels[i], ha="left", va="center", fontsize=8, color=TEXT)
@@ -145,7 +165,7 @@ def _(LinearSegmentedColormap, np, plt):
         """Mean entropy, in nats, of the rows of a probability matrix."""
         return float(np.mean(-np.sum(p * np.log(np.clip(p, 1e-12, None)), axis=1)))
 
-    return CMAP, draw_tree, entropy
+    return CMAP, draw_tree, entropy, ink
 
 
 @app.cell
@@ -175,7 +195,7 @@ def _(mo, soft_accuracy, soft_fit_ok):
 
 
 @app.cell
-def _(CMAP, class_names, mobt, np, plt):
+def _(CMAP, class_names, ink, mobt, np, plt):
     def _bigot_matrix():
         _logits = np.asarray(mobt.get_params()["_leaf_weights.v"])
         _p = np.exp(_logits - _logits.max(axis=1, keepdims=True))
@@ -188,7 +208,7 @@ def _(CMAP, class_names, mobt, np, plt):
     _ax.imshow(soft_bigots, cmap=CMAP, vmin=0, vmax=1, aspect="auto")
     for (_c, _l), _v in np.ndenumerate(soft_bigots):
         _ax.text(_l, _c, f"{_v:.2f}", ha="center", va="center", fontsize=8,
-                 color="white" if _v > 0.45 else "#222222")
+                 color=ink(_v))
     _ax.set_xticks(range(mobt.num_leaves), [f"$L_{_l}$" for _l in range(mobt.num_leaves)])
     _ax.set_yticks(range(len(class_names)), class_names)
     _ax.set_title("Bigot matrix $B$ after the soft fit", fontsize=11)
@@ -356,9 +376,11 @@ def _(class_names, draw_tree, entropy, history, mo, np, plt, test_labels):
 
     _slider = f"""
     <style>
-      body {{ margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: #222; }}
+      body {{ margin: 0; background: transparent; color: #e6edf3;
+              font-family: system-ui, sans-serif; font-size: 14px; }}
       .row {{ display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }}
-      input[type=range] {{ flex: 0 1 320px; accent-color: #2f7bff; }}
+      input[type=range] {{ flex: 0 1 320px; accent-color: #4eb4da; }}
+      #label {{ font-variant-numeric: tabular-nums; color: #4eb4da; font-weight: 600; }}
       img {{ width: 100%; height: auto; display: block; }}
     </style>
     <div class="row">
@@ -408,7 +430,7 @@ def _(mo):
 
 
 @app.cell
-def _(CMAP, X_test, class_names, history, mo, mobt, np, plt, test_labels):
+def _(CMAP, X_test, class_names, history, ink, mo, mobt, np, plt, test_labels):
     # history is listed so that this runs after the squeezing
     _final = history[-1]
     _soft = np.argmax(mobt.predict(X_test), axis=1)
@@ -423,7 +445,7 @@ def _(CMAP, X_test, class_names, history, mo, mobt, np, plt, test_labels):
     _ax.imshow(_confusion, cmap=CMAP)
     for (_i, _j), _v in np.ndenumerate(_confusion):
         _ax.text(_j, _i, str(_v), ha="center", va="center",
-                 color="white" if _v > _confusion.max() / 2 else "#222222")
+                 color=ink(_v / _confusion.max()))
     _ax.set_xticks(range(_n), class_names)
     _ax.set_yticks(range(_n), class_names)
     _ax.set_xlabel("single-path prediction")

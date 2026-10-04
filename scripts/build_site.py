@@ -7,6 +7,7 @@ Usage:
 
 import argparse
 import html
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,24 +21,38 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>{title}</title>
-<style>
-  body {{ max-width: 42rem; margin: 3rem auto; padding: 0 1rem;
-         font-family: system-ui, sans-serif; line-height: 1.5; color: #222; }}
-  a {{ color: #0a3fc2; }}
-  li {{ margin-bottom: 0.75rem; }}
-  .desc {{ display: block; color: #555; }}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>{title}</h1>
-<ul>
+<header class="wrap">
+  <p class="eyebrow">marimo notebooks</p>
+  <h1>{title}</h1>
+  <p class="subtitle">{subtitle}</p>
+</header>
+<main class="wrap">
+  <ul class="grid">
 {items}
-</ul>
-<p><a href="https://github.com/stur86/miniml-examples">Source on GitHub</a></p>
+  </ul>
+</main>
+<footer>
+  <div class="wrap">
+    <a href="{repo}">Source on GitHub</a>
+  </div>
+</footer>
 </body>
 </html>
 """
+
+CARD_TEMPLATE = """    <li class="card">
+      <h2><a href="{slug}.html">{name}</a></h2>
+      <p>{description}</p>
+      <div class="links">
+        <span class="open">Open notebook &rarr;</span>
+        <a class="source" href="{source}">source</a>
+      </div>
+    </li>"""
 
 
 def load_config(path: Path) -> dict:
@@ -72,15 +87,26 @@ def export(notebook: Path, target: Path) -> None:
 
 
 def write_index(config: dict, out: Path) -> None:
-    """Write the index page that links to every example."""
-    items = []
-    for ex in config["examples"]:
-        item = f'  <li><a href="{html.escape(ex["slug"])}.html">{html.escape(ex["name"])}</a>'
-        if ex.get("description"):
-            item += f'<span class="desc">{html.escape(ex["description"])}</span>'
-        items.append(item + "</li>")
-    title = html.escape(config.get("title", "Examples"))
-    (out / "index.html").write_text(INDEX_TEMPLATE.format(title=title, items="\n".join(items)))
+    """Write the index page that links to every example, and its stylesheet."""
+    repo = config.get("repo", "").rstrip("/")
+    items = [
+        CARD_TEMPLATE.format(
+            slug=html.escape(ex["slug"]),
+            name=html.escape(ex["name"]),
+            description=html.escape(ex.get("description", "")),
+            source=html.escape(f"{repo}/blob/master/{ex['path']}"),
+        )
+        for ex in config["examples"]
+    ]
+    (out / "index.html").write_text(
+        INDEX_TEMPLATE.format(
+            title=html.escape(config.get("title", "Examples")),
+            subtitle=html.escape(config.get("subtitle", "")),
+            repo=html.escape(repo),
+            items="\n".join(items),
+        )
+    )
+    shutil.copyfile(ROOT / "theme" / "site.css", out / "style.css")
 
 
 def main() -> None:

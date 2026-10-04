@@ -1,0 +1,109 @@
+/* Dark theme for the published notebooks, matching the S++ blog palette.
+   Overrides marimo's semantic colour variables; pair with theme = "dark". */
+
+:root,
+.marimo,
+.dark,
+.dark-theme {
+  --background: #0e141b !important;
+  --foreground: #e6edf3 !important;
+  --muted: #0a0f14 !important;
+  --muted-foreground: #9aa7b4 !important;
+  --card: #151e28 !important;
+  --card-foreground: #d5dde5 !important;
+  --popover: #151e28 !important;
+  --popover-foreground: #d5dde5 !important;
+  --border: #263241 !important;
+  --input: #34414f !important;
+  --primary: #4eb4da !important;
+  --primary-foreground: #0e141b !important;
+  --accent: #173647 !important;
+  --accent-foreground: #bfe7f6 !important;
+  --link: #4eb4da !important;
+  --link-visited: #9bc9e6 !important;
+}
+
+body {
+  background: #0e141b;
+}
+
+/* Markdown */
+.markdown {
+  line-height: 1.65;
+}
+
+.markdown h1 {
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding-bottom: 0.6rem;
+  margin-bottom: 1.2rem;
+  border-bottom: 1px solid #263241;
+}
+
+.markdown h2 {
+  font-size: 1.45rem;
+  font-weight: 650;
+  margin-top: 2.2rem;
+  padding-left: 0.75rem;
+  border-left: 3px solid #4eb4da;
+}
+
+.markdown a {
+  color: #4eb4da;
+  text-decoration-color: #4eb4da66;
+  text-underline-offset: 3px;
+}
+
+.markdown a:hover {
+  text-decoration-color: #4eb4da;
+}
+
+.markdown strong {
+  color: #ffffff;
+}
+
+/* Tables */
+.markdown table {
+  border-collapse: collapse;
+  border: 1px solid #263241;
+  border-radius: 6px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.markdown th {
+  background: #151e28;
+  color: #9aa7b4;
+  font-weight: 600;
+}
+
+.markdown th,
+.markdown td {
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid #263241;
+}
+
+.markdown tr:last-child td {
+  border-bottom: none;
+}
+
+/* Display maths a little apart from the text */
+.markdown .katex-display,
+.markdown mjx-container[display="true"] {
+  margin: 1.1rem 0;
+}
+
+/* Figures and the stage slider sit on a card */
+.output img,
+.output iframe {
+  border-radius: 8px;
+}
+
+.output-area:has(> * img),
+.output-area:has(> * iframe) {
+  background: #151e28;
+  border: 1px solid #263241;
+  border-radius: 10px;
+  padding: 0.75rem;
+}

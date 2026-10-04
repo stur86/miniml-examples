@@ -29,3 +29,7 @@ dev = [
     "pytest>=9.1.1",
     "pyyaml>=6.0.3",
 ]
+
+# Theme for marimo, also used by the GitHub Pages export
+[tool.marimo.display]
+theme = "dark"
