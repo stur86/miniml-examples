@@ -23,7 +23,8 @@ body {
     radial-gradient(60rem 30rem at 15% -10%, #4eb4da14, transparent 70%),
     var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+    Georgia, serif;
   line-height: 1.6;
 }
 
@@ -34,8 +35,10 @@ body {
   padding: 0 1.5rem;
 }
 
-header {
-  padding: 4.5rem 0 2.5rem;
+/* header.wrap and main.wrap, to win over the side padding of .wrap */
+header.wrap {
+  padding-top: 3.5rem;
+  padding-bottom: 2.5rem;
 }
 
 .eyebrow {
@@ -50,19 +53,19 @@ header {
 h1 {
   margin: 0;
   font-size: clamp(2rem, 5vw, 2.8rem);
-  font-weight: 750;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   line-height: 1.15;
 }
 
 .subtitle {
   max-width: 38rem;
-  margin: 0.9rem 0 0;
+  margin: 1.2rem 0 0;
   color: var(--muted);
-  font-size: 1.1rem;
+  font-size: 1.15rem;
 }
 
-main {
+main.wrap {
   flex: 1;
   padding-bottom: 4rem;
 }
@@ -96,8 +99,8 @@ main {
 
 .card h2 {
   margin: 0 0 0.4rem;
-  font-size: 1.15rem;
-  font-weight: 650;
+  font-size: 1.2rem;
+  font-weight: 500;
 }
 
 /* The whole card opens the notebook */
